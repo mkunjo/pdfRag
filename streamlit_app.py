@@ -49,15 +49,15 @@ def sendRagIngestEvent(pdfPath: Path, embeddingModel: str) -> str:
     return resp.json()["ids"][0]  # Event ID
 
 
-# PDF Upload Section
-st.title("Upload a PDF to Ingest")
+# Embedding Model Selection (applies to both ingestion and querying)
+st.title("PDF RAG System")
 
-embeddingModelIngest = st.radio(
-    "Choose embedding model",
+embeddingModelDisplay = st.radio(
+    "Embedding Model (used for both upload and search)",
     options=["Voyage AI (Recommended)", "OpenAI", "Gemini"],
     index=0,
     horizontal=True,
-    key="embedding_ingest"
+    help="This determines which collection your PDFs are stored in and searched from"
 )
 # Map display name to internal name
 embeddingModelMap = {
@@ -65,21 +65,26 @@ embeddingModelMap = {
     "OpenAI": "openai",
     "Gemini": "gemini"
 }
-selectedEmbeddingIngest = embeddingModelMap[embeddingModelIngest]
+selectedEmbeddingModel = embeddingModelMap[embeddingModelDisplay]
+
+st.divider()
+
+# PDF Upload Section
+st.subheader("Upload a PDF to Ingest")
 
 uploaded = st.file_uploader("Choose a PDF", type=["pdf"], accept_multiple_files=False)
 
 if uploaded is not None:
     with st.spinner("Uploading and triggering ingestion..."):
         path = saveUploadedPdf(uploaded)
-        sendRagIngestEvent(path, selectedEmbeddingIngest)  # Trigger Inngest function
-    st.success(f"Triggered ingestion for: {path.name} using {embeddingModelIngest}")
+        sendRagIngestEvent(path, selectedEmbeddingModel)  # Trigger Inngest function
+    st.success(f"Triggered ingestion for: {path.name} using {embeddingModelDisplay}")
     st.caption("You can upload another PDF if you like.")
 
 st.divider()
 
 # Query Section
-st.title("Ask a question about your PDFs")
+st.subheader("Ask a question about your PDFs")
 
 
 def sendRagQueryEvent(question: str, topK: int, embeddingModel: str) -> str:
@@ -157,39 +162,24 @@ def waitForRunOutput(eventId: str, timeoutS: float = 120.0, pollIntervalS: float
 with st.form("ragQueryForm"):
     question = st.text_input("Your question")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        embeddingModelQuery = st.radio(
-            "Embedding model",
-            options=["Voyage AI (Recommended)", "OpenAI", "Gemini"],
-            index=0,
-            key="embedding_query"
-        )
-    with col2:
-        answerModel = st.radio(
-            "Answer model",
-            options=["GPT", "Gemini"],
-            index=0
-        )
+    answerModel = st.radio(
+        "Answer model",
+        options=["GPT", "Gemini"],
+        index=0,
+        horizontal=True,
+        help="Which LLM should generate the answer (independent from embedding model)"
+    )
 
     topK = st.number_input("How many chunks to retrieve", min_value=1, max_value=20, value=5, step=1)
     submitted = st.form_submit_button("Ask")
 
     if submitted and question.strip():
-        # Map display name to internal name
-        embeddingModelMap = {
-            "Voyage AI (Recommended)": "voyageai",
-            "OpenAI": "openai",
-            "Gemini": "gemini"
-        }
-        selectedEmbeddingQuery = embeddingModelMap[embeddingModelQuery]
-
         with st.spinner("Sending event and generating answer..."):
             # Trigger the appropriate query function based on model selection
             if answerModel == "GPT":
-                eventId = sendRagQueryEvent(question.strip(), int(topK), selectedEmbeddingQuery)
+                eventId = sendRagQueryEvent(question.strip(), int(topK), selectedEmbeddingModel)
             else:  # Gemini
-                eventId = sendRagQueryGeminiEvent(question.strip(), int(topK), selectedEmbeddingQuery)
+                eventId = sendRagQueryGeminiEvent(question.strip(), int(topK), selectedEmbeddingModel)
 
             # Wait for Inngest to complete the run and return output
             output = waitForRunOutput(eventId)

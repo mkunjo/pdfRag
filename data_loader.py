@@ -6,7 +6,7 @@ Supports multiple embedding providers: Voyage AI, OpenAI, and Gemini.
 import os
 from openai import OpenAI
 import voyageai
-import google.generativeai as genai
+from google import genai
 from llama_index.readers.file import PDFReader
 from llama_index.core.node_parser import SentenceSplitter
 from dotenv import load_dotenv
@@ -17,7 +17,7 @@ load_dotenv()
 EMBEDDING_MODELS = {
     "voyageai": {"model": "voyage-3", "dim": 1024},
     "openai": {"model": "text-embedding-3-large", "dim": 3072},
-    "gemini": {"model": "text-embedding-004", "dim": 768},
+    "gemini": {"model": "gemini-embedding-001", "dim": 3072},
 }
 
 # chunkOverlap helps maintain context between chunks
@@ -71,17 +71,16 @@ def embedTexts(texts: list[str], embeddingModel: str = "voyageai") -> list[list[
         return [item.embedding for item in response.data]
 
     elif embeddingModel == "gemini":
-        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-        model = EMBEDDING_MODELS["gemini"]["model"]
+        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+        model = f"models/{EMBEDDING_MODELS['gemini']['model']}"
         # Gemini embeddings API requires processing each text individually
         embeddings = []
         for text in texts:
-            result = genai.embed_content(
-                model=f"models/{model}",
-                content=text,
-                task_type="retrieval_document"
+            result = client.models.embed_content(
+                model=model,
+                contents=text
             )
-            embeddings.append(result["embedding"])
+            embeddings.append(result.embeddings[0].values)
         return embeddings
 
     else:

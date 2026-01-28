@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 import uuid
 import os
 import datetime
-import google.generativeai as genai
+from google import genai
 from data_loader import loadAndChunkPdf, embedTexts
 from vector_db import QdrantStorage
 from custom_types import RAGQueryResult, RAGSearchResult, RAGUpsertResult, RAGChunkAndSrc
@@ -161,20 +161,16 @@ async def ragQueryPdfGemini(ctx: inngest.Context):
     # Step 2: Get answer from Gemini
     def generate_with_gemini():
         """Call Gemini API to generate answer."""
-        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
         prompt = (
             "You answer questions using only the provided context.\n\n"
             f"{userContent}"
         )
 
-        response = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.2,
-                "max_output_tokens": 1024,
-            }
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash",
+            contents=prompt
         )
 
         return response.text.strip()

@@ -7,7 +7,7 @@ A Retrieval-Augmented Generation (RAG) system that allows you to upload PDFs, in
 - **PDF Ingestion**: Upload PDFs through a user-friendly Streamlit interface
 - **Smart Chunking**: Automatically splits documents into optimally-sized chunks with overlap for context preservation
 - **Multiple Embedding Models**: Choose between Voyage AI, OpenAI, or Gemini embeddings
-- **Flexible Answer Models**: Select GPT-4o-mini or Gemini 1.5 Flash for answer generation
+- **Flexible Answer Models**: Select GPT-4o-mini or Gemini 2.5 Flash for answer generation
 - **Semantic Search**: Find relevant content based on meaning, not just keywords
 - **AI-Powered Answers**: Leverages state-of-the-art LLMs to generate accurate answers using retrieved context
 - **Background Processing**: Powered by Inngest for reliable, observable background jobs
@@ -22,8 +22,8 @@ A Retrieval-Augmented Generation (RAG) system that allows you to upload PDFs, in
 - **Embeddings**:
   - **Voyage AI** voyage-3 (1024-dim)
   - **OpenAI** text-embedding-3-large (3072-dim)
-  - **Gemini** text-embedding-004 (768-dim)
-- **LLMs**: OpenAI GPT-4o-mini & Google Gemini 1.5 Flash
+  - **Gemini** gemini-embedding-001 (3072-dim)
+- **LLMs**: OpenAI GPT-4o-mini & Google Gemini 2.5 Flash
 - **PDF Processing**: LlamaIndex
 - **Frontend**: Streamlit
 - **Language**: Python 3.12
@@ -31,26 +31,25 @@ A Retrieval-Augmented Generation (RAG) system that allows you to upload PDFs, in
 ## Architecture
 
 ```
-User uploads PDF → Select embedding model (Voyage AI/OpenAI/Gemini)
-                 ↓
-         Inngest job triggered
-                 ↓
-         Load & chunk PDF
-                 ↓
-      Generate embeddings with selected model
-                 ↓
-      Store in model-specific Qdrant collection
-      (e.g., docs_voyageai, docs_openai, docs_gemini)
+User selects embedding model → (Voyage AI/OpenAI/Gemini)
+        Applies to both upload and query operations
+                         ↓
+                    ┌────────┴────────┐
+                    ↓                 ↓
 
-User asks question → Select embedding model + answer model
-                   ↓
-            Embed question with selected embedding model
-                   ↓
-            Search matching Qdrant collection
-                   ↓
-         Send chunks + question to selected LLM (GPT/Gemini)
-                   ↓
-            Return AI-generated answer with sources
+         UPLOAD FLOW              QUERY FLOW
+                    ↓                 ↓
+        Upload PDF file      Type question + select answer model
+                    ↓                 ↓
+       Inngest job triggered    Embed question with selected model
+                    ↓                 ↓
+        Load & chunk PDF         Search matching collection
+                    ↓                 ↓
+   Generate embeddings          Retrieve relevant chunks
+                    ↓                 ↓
+      Store in collection       Send to LLM (GPT/Gemini)
+  (docs_voyageai/openai/gemini)      ↓
+                              Return answer + sources
 ```
 
 ## Setup
@@ -106,32 +105,38 @@ npx inngest-cli@latest dev -u http://127.0.0.1:8000/api/inngest --no-discovery
 
 3. **Start Streamlit UI**:
 ```bash
-streamlit run streamlit_app.py
+uv run streamlit run streamlit_app.py
 ```
 
 4. Open your browser to `http://localhost:8501`
 
 ## Usage
 
+### Getting Started
+
+1. Open the Streamlit interface at http://localhost:8501
+2. **Select embedding model at the top**: Choose Voyage AI, OpenAI, or Gemini
+   - This setting applies to both PDF uploads and queries
+   - Determines which collection your documents are stored in and searched from
+
 ### Uploading a PDF
 
-1. Open the Streamlit interface
-2. **Select embedding model**: Choose Voyage AI, OpenAI, or Gemini
-   - This determines how your PDF is converted to vectors
-3. Click "Browse files" and select a PDF
-4. Wait for ingestion to complete (you'll see a success message)
+1. Scroll to the "Upload a PDF to Ingest" section
+2. Click "Browse files" and select a PDF
+3. Wait for ingestion to complete (you'll see a success message)
+4. Your PDF is now stored in the collection for your selected embedding model
 
 ### Asking Questions
 
-1. Type your question in the text input
-2. **Select embedding model**: Must match the model used during PDF ingestion
+1. Scroll to the "Ask a question about your PDFs" section
+2. Type your question in the text input
 3. **Select answer model**: Choose GPT or Gemini for answer generation
-   - Answer model is independent from embedding model
+   - This is independent from the embedding model
 4. (Optional) Adjust the number of chunks to retrieve (default: 5)
 5. Click "Ask"
 6. View the AI-generated answer and sources
 
-**Important**: The embedding model for queries must match the embedding model used during ingestion.
+**Important**: To query documents, make sure the embedding model at the top matches the one you used when uploading those PDFs. Documents uploaded with different embedding models are stored in separate collections.
 
 ## Project Structure
 
@@ -150,24 +155,26 @@ pdfRag/
 
 ### PDF Ingestion Flow
 
-1. **Select Embedding Model**: User chooses Voyage AI, OpenAI, or Gemini
-2. **Load**: PDF is read and text is extracted using LlamaIndex
-3. **Chunk**: Text is split into 1000-character chunks with 250-character overlap
-4. **Embed**: Each chunk is converted to a vector using selected embedding model:
+1. **Select Embedding Model**: User chooses Voyage AI, OpenAI, or Gemini at the top of the UI (applies to all operations)
+2. **Upload PDF**: User uploads a PDF file
+3. **Load**: PDF is read and text is extracted using LlamaIndex
+4. **Chunk**: Text is split into 1000-character chunks with 250-character overlap
+5. **Embed**: Each chunk is converted to a vector using selected embedding model:
    - Voyage AI: 1024-dimensional vector
    - OpenAI: 3072-dimensional vector
-   - Gemini: 768-dimensional vector
-5. **Store**: Vectors are stored in model-specific Qdrant collection (e.g., `docs_voyageai`) with metadata (source, text)
-6. **ID Generation**: Uses UUID5 with embedding model name for deterministic IDs
+   - Gemini: 3072-dimensional vector
+6. **Store**: Vectors are stored in model-specific Qdrant collection (e.g., `docs_voyageai`) with metadata (source, text)
+7. **ID Generation**: Uses UUID5 with embedding model name for deterministic IDs
 
 ### Query Flow
 
-1. **Select Models**: User chooses embedding model (must match ingestion) and answer model (GPT or Gemini)
-2. **Embed Question**: Convert user's question to a vector using selected embedding model
-3. **Search**: Find top K most similar chunks from the matching collection using cosine similarity
-4. **Build Context**: Format retrieved chunks as context for the LLM
-5. **Generate Answer**: Send context + question to selected answer model (GPT-4o-mini or Gemini 1.5 Flash)
-6. **Return**: Display answer with source citations
+1. **Embedding Model**: Uses the model selected at the top of the UI (must match the one used for ingestion)
+2. **Select Answer Model**: User chooses GPT or Gemini for answer generation
+3. **Embed Question**: Convert user's question to a vector using the selected embedding model
+4. **Search**: Find top K most similar chunks from the matching collection using cosine similarity
+5. **Build Context**: Format retrieved chunks as context for the LLM
+6. **Generate Answer**: Send context + question to selected answer model (GPT-4o-mini or Gemini 2.5 Flash)
+7. **Return**: Display answer with source citations
 
 ### Why Separate Collections?
 
@@ -195,7 +202,7 @@ Configured in `data_loader.py` - `EMBEDDING_MODELS` dictionary:
 |-------|------------|------------|
 | Voyage AI | 1024 | `voyage-3` |
 | OpenAI | 3072 | `text-embedding-3-large` |
-| Gemini | 768 | `text-embedding-004` |
+| Gemini | 3072 | `gemini-embedding-001` |
 
 ### Chunking Settings
 
@@ -224,8 +231,9 @@ The FastAPI server exposes:
 
 | Feature | Voyage AI | OpenAI | Gemini |
 |---------|-----------|--------|--------|
+| **Model** | voyage-3 | text-embedding-3-large | gemini-embedding-001 |
 | **MTEB Score** | ~67.7% | ~64.6% | ~62-63% |
-| **Dimensions** | 1024 | 3072 | 768 |
+| **Dimensions** | 1024 | 3072 | 3072 |
 | **Cost/1M tokens** | $0.06 | $0.13 | Free tier, then $0.025 |
 | **Optimized for** | RAG & retrieval | General purpose | Google ecosystem |
 
@@ -243,7 +251,7 @@ Three background functions handle the workflow:
 
 3. **ragQueryPdfGemini**: Triggered by `rag/queryPdfGemini` event
    - Embeds question with selected model, searches matching collection
-   - Generates answer with Gemini 1.5 Flash
+   - Generates answer with Gemini 2.5 Flash
 
 ## Development
 
@@ -284,7 +292,7 @@ If you want to compare models, ingest the same PDF with multiple embedding model
 
 ### How do I switch embedding models for existing PDFs?
 
-You'll need to re-ingest your PDFs with the new embedding model. The system maintains separate collections, so you can keep both versions if you want to compare.
+Change the embedding model selector at the top of the UI, then re-upload your PDFs. The system maintains separate collections, so you can keep both versions if you want to compare performance.
 
 ## Troubleshooting
 
@@ -296,7 +304,7 @@ You'll need to re-ingest your PDFs with the new embedding model. The system main
 - Restart uvicorn after updating `.env`
 
 ### "Collection not found" Errors
-- Make sure you selected the same embedding model for queries as you used during ingestion
+- Make sure the embedding model selected at the top matches the one used when uploading your PDFs
 - Check that the PDF was successfully ingested (look for success message in Streamlit)
 - Verify Qdrant is running: `docker ps` should show qdrant/qdrant
 
